@@ -21,8 +21,8 @@ class JBG37twin:
         dtsub= dt/ substeps
         for _ in range(substeps):
             didt, dwdt = self.get_acc(voltage,load_torque)
-            self.current += didt * dt
-            self.w += dwdt * dt #omaga im losing my marbles copying these equations from pdf fah
+            self.current += didt * dtsub
+            self.w += dwdt * dtsub #omaga im losing my marbles copying these equations from pdf fah
 
         #here i think ill add limitation/protection to not get negative speed , hear me out on this fellas
             if self.w < 0:
