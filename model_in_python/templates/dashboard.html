@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Conveyor Digital Twin — Live Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+    body {
+        background: #0f1117;
+        color: #e5e7eb;
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 24px;
+    }
+    h1 {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    #status-line {
+        font-size: 13px;
+        color: #9ca3af;
+        margin-bottom: 20px;
+    }
+    .badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: 12px;
+    }
+    .badge.ok { background: #064e3b; color: #6ee7b7; }
+    .badge.anomaly { background: #7f1d1d; color: #fca5a5; }
+    .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    .card {
+        background: #171923;
+        border: 1px solid #262b3a;
+        border-radius: 10px;
+        padding: 16px;
+    }
+    .card h2 {
+        font-size: 14px;
+        font-weight: 500;
+        color: #9ca3af;
+        margin: 0 0 12px 0;
+    }
+    canvas {
+        max-height: 320px;
+    }
+</style>
+</head>
+<body>
+    <h1>Conveyor Digital Twin — Real vs Virtual</h1>
+    <div id="status-line">
+        Status: <span id="status-badge" class="badge ok">--</span>
+        &nbsp;|&nbsp; Last update: <span id="last-update">--</span>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h2>Speed (RPM)</h2>
+            <canvas id="rpmChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>Current (A)</h2>
+            <canvas id="currentChart"></canvas>
+        </div>
+    </div>
+
+<script>
+const MAX_POINTS = 60;       // how many samples to keep on screen
+const POLL_MS = 500;         // how often to fetch /history
+const RPM_ERR_THRESHOLD = 5.0;
+const CURRENT_ERR_THRESHOLD = 0.05;
+
+const chartOptions = {
+    responsive: true,
+    animation: false,
+    interaction: { mode: 'nearest', intersect: false },
+    scales: {
+        x: { ticks: { color: '#9ca3af' }, grid: { color: '#262b3a' } },
+        y: { ticks: { color: '#9ca3af' }, grid: { color: '#262b3a' } }
+    },
+    plugins: { legend: { labels: { color: '#e5e7eb' } } }
+};
+
+const rpmChart = new Chart(document.getElementById('rpmChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            { label: 'Real RPM', data: [], borderColor: '#60a5fa', backgroundColor: 'transparent', tension: 0.25, pointRadius: 0 },
+            { label: 'Virtual RPM', data: [], borderColor: '#f59e0b', backgroundColor: 'transparent', tension: 0.25, pointRadius: 0 }
+        ]
+    },
+    options: chartOptions
+});
+
+const currentChart = new Chart(document.getElementById('currentChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            { label: 'Real Current', data: [], borderColor: '#34d399', backgroundColor: 'transparent', tension: 0.25, pointRadius: 0 },
+            { label: 'Virtual Current', data: [], borderColor: '#f472b6', backgroundColor: 'transparent', tension: 0.25, pointRadius: 0 }
+        ]
+    },
+    options: chartOptions
+});
+
+function fmtTime(unixSeconds) {
+    const d = new Date(unixSeconds * 1000);
+    return d.toLocaleTimeString();
+}
+
+async function poll() {
+    try {
+        const resp = await fetch(`/history?n=${MAX_POINTS}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (!Array.isArray(data) || data.length === 0) return;
+
+        const labels = data.map(d => fmtTime(d.t));
+
+        rpmChart.data.labels = labels;
+        rpmChart.data.datasets[0].data = data.map(d => d.real_rpm);
+        rpmChart.data.datasets[1].data = data.map(d => d.virtual_rpm);
+        rpmChart.update('none');
+
+        currentChart.data.labels = labels;
+        currentChart.data.datasets[0].data = data.map(d => d.real_current);
+        currentChart.data.datasets[1].data = data.map(d => d.virtual_current);
+        currentChart.update('none');
+
+        const latest = data[data.length - 1];
+        const badge = document.getElementById('status-badge');
+        const isAnomaly = latest.rpm_error > RPM_ERR_THRESHOLD || latest.current_error > CURRENT_ERR_THRESHOLD;
+        badge.textContent = isAnomaly
+            ? `ANOMALY (ΔRPM ${latest.rpm_error.toFixed(2)}, ΔI ${latest.current_error.toFixed(3)}A)`
+            : `Nominal (ΔRPM ${latest.rpm_error.toFixed(2)}, ΔI ${latest.current_error.toFixed(3)}A)`;
+        badge.className = 'badge ' + (isAnomaly ? 'anomaly' : 'ok');
+        document.getElementById('last-update').textContent = fmtTime(latest.t);
+    } catch (err) {
+        document.getElementById('status-badge').textContent = 'Server unreachable';
+        document.getElementById('status-badge').className = 'badge anomaly';
+    }
+}
+
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
