@@ -70,9 +70,11 @@
             <canvas id="currentChart"></canvas>
         </div>
     </div>
+
 <script>
-const MAX_POINTS = 60;       // Max samples on screen
-const POLL_MS = 500;         // Poll interval
+<script>
+const MAX_POINTS = 60;       
+const POLL_MS = 500;         
 const RPM_ERR_THRESHOLD = 5.0;
 const CURRENT_ERR_THRESHOLD = 0.05;
 
@@ -87,7 +89,6 @@ const chartOptions = {
     plugins: { legend: { labels: { color: '#e5e7eb' } } }
 };
 
-// Initialize RPM Chart
 const rpmChart = new Chart(document.getElementById('rpmChart'), {
     type: 'line',
     data: { labels: [], datasets: [
@@ -97,7 +98,6 @@ const rpmChart = new Chart(document.getElementById('rpmChart'), {
     options: chartOptions
 });
 
-// Initialize Current Chart
 const currentChart = new Chart(document.getElementById('currentChart'), {
     type: 'line',
     data: { labels: [], datasets: [
@@ -112,7 +112,6 @@ function fmtTime(unixSeconds) {
     return d.toLocaleTimeString();
 }
 
-// 1. Run ONCE on page load to backfill existing history data
 async function backfillHistory() {
     try {
         const resp = await fetch(`/history?n=${MAX_POINTS}`);
@@ -120,7 +119,7 @@ async function backfillHistory() {
         const data = await resp.json();
         if (!Array.isArray(data) || data.length === 0) return;
 
-        // Populate charts
+        
         rpmChart.data.labels = data.map(d => fmtTime(d.t));
         rpmChart.data.datasets[0].data = data.map(d => d.real_rpm);
         rpmChart.data.datasets[1].data = data.map(d => d.virtual_rpm);
@@ -147,17 +146,14 @@ async function pollLatest() {
             return; 
         }
 
-        // Push new data point to RPM
         rpmChart.data.labels.push(timeStr);
         rpmChart.data.datasets[0].data.push(entry.real_rpm);
         rpmChart.data.datasets[1].data.push(entry.virtual_rpm);
 
-        // Push new data point to Current
         currentChart.data.labels.push(timeStr);
         currentChart.data.datasets[0].data.push(entry.real_current);
         currentChart.data.datasets[1].data.push(entry.virtual_current);
 
-        // Cap array lengths to prevent infinite browser memory usage
         if (rpmChart.data.labels.length > MAX_POINTS) {
             rpmChart.data.labels.shift();
             rpmChart.data.datasets[0].data.shift();
@@ -176,7 +172,6 @@ async function pollLatest() {
     }
 }
 
-// Helper to refresh UI metrics and execute fast drawing
 function updateChartsAndUI(latest) {
     rpmChart.update('none');
     currentChart.update('none');
@@ -190,14 +185,14 @@ function updateChartsAndUI(latest) {
     badge.className = 'badge ' + (isAnomaly ? 'anomaly' : 'ok');
     document.getElementById('last-update').textContent = fmtTime(latest.t);
 }
-
-// Orchestrate the execution loop
 async function init() {
     await backfillHistory();
     setInterval(pollLatest, POLL_MS);
 }
 
 init();
+</script>
+
 </script>
 </body>
 </html>

@@ -1,13 +1,13 @@
 import numpy as np
-class JBG37twin:# i used the datasheet 
-    def __init__(self):
-        self.R = 30.0  #resistance in ohms
+class JBG37twin:
+    def __init__(self):#used chaima calculations this time
+        self.R = 5.217  #resistance in ohms
         self.L = 0.005 #inductance in henries (we gonna tune this later on)
-        self.Kt = 0.0135 #torque constant Nm/A
-        self.Ke = 0.0135 #back EMF constant V/rad/s
-        self.J = 1e-6 #rotor inertia kg.m^2 (this as well gonna be tuned later)
-        self.B = 2.6e-6 #viscous friction
-        self.Ratio = 90 #this ios the gearbox ration from datasheet of the 60 rpm model
+        self.Kt = 1.81022 #torque constant Nm/A
+        self.Ke = 1.81022 #back EMF constant V/rad/s
+        self.J = 0.07056 #rotor inertia kg.m^2 (this as well gonna be tuned later)
+        self.B = 0.0345 #viscous friction
+        self.Ratio = 168 #this ios the gearbox ration from datasheet of the 60 rpm model
         self.w = 0.0 # so this is the angular velocity uk w  rad/s
         self.current = 0.0 # amps
     
