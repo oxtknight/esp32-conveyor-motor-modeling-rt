@@ -3,9 +3,10 @@ import threading
 from collections import deque
 from flask import Flask, request, jsonify, render_template
 
-from twin_motor import JBG37twin  # this is the callibrated model 
+from twin_motor import JBG37twin  # calibrated ratio 168:1
 
 app = Flask(__name__)
+
 
 motor = JBG37twin()
 lock = threading.Lock()
@@ -14,7 +15,7 @@ history = deque(maxlen=HISTORY_LEN)
 
 last_step_time = time.time()
 
-DEFAULT_VOLTAGE = 12.0
+DEFAULT_VOLTAGE = 12.0  
 
 
 def record(real_rpm, real_current, virt_rpm, virt_current):
@@ -39,8 +40,9 @@ def dashboard():
 @app.route("/telemetry", methods=["POST"])
 def telemetry():
     """
-    ESP8266 gonna post JSON like:
+    ESP8266 posts JSON like:
         {"rpm": 63.5, "current": 0.121, "voltage": 12.0, "load_torque": 0.0}
+    voltage/load_torque are optional -- default to nominal if omitted.
     """
     global last_step_time
     data = request.get_json(force=True, silent=True)
@@ -55,7 +57,7 @@ def telemetry():
     with lock:
         now = time.time()
         dt = now - last_step_time
-        dt = min(max(dt, 0.001), 0.1)  #here so it never 0 nor so huge 
+        dt = min(max(dt, 0.001), 0.1)  # clamp: never 0 (unstable div), never huge (startup/drop gaps)
         last_step_time = now
 
         virt_rpm, virt_current = motor.step(voltage, load_torque=load_torque, dt=dt)

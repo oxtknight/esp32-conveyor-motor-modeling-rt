@@ -72,9 +72,8 @@
     </div>
 
 <script>
-<script>
-const MAX_POINTS = 60;       
-const POLL_MS = 500;         
+const MAX_POINTS = 60;       // Max samples on screen
+const POLL_MS = 500;         // Poll interval
 const RPM_ERR_THRESHOLD = 5.0;
 const CURRENT_ERR_THRESHOLD = 0.05;
 
@@ -98,6 +97,7 @@ const rpmChart = new Chart(document.getElementById('rpmChart'), {
     options: chartOptions
 });
 
+// initializer 
 const currentChart = new Chart(document.getElementById('currentChart'), {
     type: 'line',
     data: { labels: [], datasets: [
@@ -112,6 +112,7 @@ function fmtTime(unixSeconds) {
     return d.toLocaleTimeString();
 }
 
+
 async function backfillHistory() {
     try {
         const resp = await fetch(`/history?n=${MAX_POINTS}`);
@@ -119,11 +120,11 @@ async function backfillHistory() {
         const data = await resp.json();
         if (!Array.isArray(data) || data.length === 0) return;
 
-        
+        //charts
         rpmChart.data.labels = data.map(d => fmtTime(d.t));
         rpmChart.data.datasets[0].data = data.map(d => d.real_rpm);
         rpmChart.data.datasets[1].data = data.map(d => d.virtual_rpm);
-        
+
         currentChart.data.labels = data.map(d => fmtTime(d.t));
         currentChart.data.datasets[0].data = data.map(d => d.real_current);
         currentChart.data.datasets[1].data = data.map(d => d.virtual_current);
@@ -143,17 +144,20 @@ async function pollLatest() {
 
         const timeStr = fmtTime(entry.t);
         if (rpmChart.data.labels.length > 0 && rpmChart.data.labels[rpmChart.data.labels.length - 1] === timeStr) {
-            return; 
+            return;
         }
 
+        
         rpmChart.data.labels.push(timeStr);
         rpmChart.data.datasets[0].data.push(entry.real_rpm);
         rpmChart.data.datasets[1].data.push(entry.virtual_rpm);
 
+        
         currentChart.data.labels.push(timeStr);
         currentChart.data.datasets[0].data.push(entry.real_current);
         currentChart.data.datasets[1].data.push(entry.virtual_current);
 
+        
         if (rpmChart.data.labels.length > MAX_POINTS) {
             rpmChart.data.labels.shift();
             rpmChart.data.datasets[0].data.shift();
@@ -178,21 +182,20 @@ function updateChartsAndUI(latest) {
 
     const badge = document.getElementById('status-badge');
     const isAnomaly = latest.rpm_error > RPM_ERR_THRESHOLD || latest.current_error > CURRENT_ERR_THRESHOLD;
-    
+
     badge.textContent = isAnomaly
         ? `ANOMALY (ΔRPM ${latest.rpm_error.toFixed(2)}, ΔI ${latest.current_error.toFixed(3)}A)`
         : `Nominal (ΔRPM ${latest.rpm_error.toFixed(2)}, ΔI ${latest.current_error.toFixed(3)}A)`;
     badge.className = 'badge ' + (isAnomaly ? 'anomaly' : 'ok');
     document.getElementById('last-update').textContent = fmtTime(latest.t);
 }
+
 async function init() {
     await backfillHistory();
     setInterval(pollLatest, POLL_MS);
 }
 
 init();
-</script>
-
 </script>
 </body>
 </html>

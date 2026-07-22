@@ -2,23 +2,34 @@ import numpy as np
 class JBG37twin:
     def __init__(self):#used chaima calculations this time
         self.R = 5.217  #resistance in ohms
-        self.L = 0.005 #inductance in henries (we gonna tune this later on)
+        self.L = 0.14651 #inductance in henries (we gonna tune this later on)
         self.Kt = 1.81022 #torque constant Nm/A
         self.Ke = 1.81022 #back EMF constant V/rad/s
         self.J = 0.07056 #rotor inertia kg.m^2 (this as well gonna be tuned later)
         self.B = 0.0345 #viscous friction
         self.Ratio = 168 #this ios the gearbox ration from datasheet of the 60 rpm model
+        self.Tf = 0.21722
         self.w = 0.0 # so this is the angular velocity uk w  rad/s
         self.current = 0.0 # amps
     
     def get_acc(self , voltage , load_torque = 0.0): #so this will get the acceleration using diff eqs 
         didt = (voltage - (self.R * self.current) - (self.Ke * self.w)) / self.L
-        dwdt = ((self.Kt * self.current) - (self.B * self.w) - load_torque) / self.J
-        
+        dwdt = ((self.Kt * self.current) - friction - load_torque) / self.J
+        friction = self.B * self.w
+        if self.w > 0:
+            friction = self.Tf + (self.B * self.w)
+        elif self.w < 0:
+            friction = -self.Tf + (self.B * self.w)
         return didt, dwdt
     
-    def step(self, voltage ,load_torque = 0.0, dt = 0.01, substeps=150):
-        dtsub= dt/ substeps
+    def step(self, voltage ,load_torque = 0.0, dt = 0.01, substeps=None):
+        if substeps is None:
+            
+            # time constant tao l/R
+            tau_e = self.L / self.R
+            substeps = max(int((dt / tau_e) * 20), 20)
+        dtsub = dt / substeps
+
         for _ in range(substeps):
             didt, dwdt = self.get_acc(voltage,load_torque)
             self.current += didt * dtsub
@@ -28,13 +39,13 @@ class JBG37twin:
             if self.w < 0:
                 self.w = 0
 
-        conveyor_rpm = (self.w * 9.5493) / self.Ratio
+        conveyor_rpm = self.w * 9.5493
         return conveyor_rpm , self.current
  
 if __name__ == "__main__":
      motor = JBG37twin()
      print(" 12v start")
-     for t in range(200): 
+     for t in range(300): 
          rpm, amps = motor.step(12.0, dt= 0.01)
          print(f"time: {t*10}ms | speed: {rpm:.2f} rpm | current: {amps:.3f}A")
  
