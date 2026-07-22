@@ -17,7 +17,6 @@ pinMode(25,INPUT);
 }
 
 void loop() {
-int httpResponseCode = http.POST(body);
 if (httpResponseCode > 0) {
 Serial.println(httpResponseCode);
 Serial.println(http.getString());
