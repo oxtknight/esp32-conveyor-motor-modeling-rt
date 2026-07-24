@@ -88,6 +88,7 @@ const chartOptions = {
     plugins: { legend: { labels: { color: '#e5e7eb' } } }
 };
 
+// Initialize RPM Chart
 const rpmChart = new Chart(document.getElementById('rpmChart'), {
     type: 'line',
     data: { labels: [], datasets: [
@@ -97,7 +98,7 @@ const rpmChart = new Chart(document.getElementById('rpmChart'), {
     options: chartOptions
 });
 
-// initializer 
+// Initialize Current Chart
 const currentChart = new Chart(document.getElementById('currentChart'), {
     type: 'line',
     data: { labels: [], datasets: [
@@ -112,7 +113,7 @@ function fmtTime(unixSeconds) {
     return d.toLocaleTimeString();
 }
 
-
+// 1. Run ONCE on page load to backfill existing history data
 async function backfillHistory() {
     try {
         const resp = await fetch(`/history?n=${MAX_POINTS}`);
@@ -120,7 +121,7 @@ async function backfillHistory() {
         const data = await resp.json();
         if (!Array.isArray(data) || data.length === 0) return;
 
-        //charts
+        // Populate charts
         rpmChart.data.labels = data.map(d => fmtTime(d.t));
         rpmChart.data.datasets[0].data = data.map(d => d.real_rpm);
         rpmChart.data.datasets[1].data = data.map(d => d.virtual_rpm);
@@ -138,6 +139,12 @@ async function backfillHistory() {
 async function pollLatest() {
     try {
         const resp = await fetch('/latest');
+        if (resp.status === 404) {
+            const badge = document.getElementById('status-badge');
+            badge.textContent = 'Waiting for data...';
+            badge.className = 'badge ok';
+            return;
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const entry = await resp.json();
         if (!entry || !entry.t) return;
@@ -147,17 +154,17 @@ async function pollLatest() {
             return;
         }
 
-        
+        // Push new data point to RPM
         rpmChart.data.labels.push(timeStr);
         rpmChart.data.datasets[0].data.push(entry.real_rpm);
         rpmChart.data.datasets[1].data.push(entry.virtual_rpm);
 
-        
+        // Push new data point to Current
         currentChart.data.labels.push(timeStr);
         currentChart.data.datasets[0].data.push(entry.real_current);
         currentChart.data.datasets[1].data.push(entry.virtual_current);
 
-        
+        // Cap array lengths to prevent infinite browser memory usage
         if (rpmChart.data.labels.length > MAX_POINTS) {
             rpmChart.data.labels.shift();
             rpmChart.data.datasets[0].data.shift();
@@ -176,6 +183,7 @@ async function pollLatest() {
     }
 }
 
+// Helper to refresh UI metrics and execute fast drawing
 function updateChartsAndUI(latest) {
     rpmChart.update('none');
     currentChart.update('none');
@@ -190,6 +198,7 @@ function updateChartsAndUI(latest) {
     document.getElementById('last-update').textContent = fmtTime(latest.t);
 }
 
+// Orchestrate the execution loop
 async function init() {
     await backfillHistory();
     setInterval(pollLatest, POLL_MS);
