@@ -9,6 +9,11 @@ int count = 0;
 float Real_Speed = 0;
 unsigned long passing_time = 0;
 unsigned long measurement_time =0;
+unsigned long timing = 0;
+float Real_Voltage = 0;
+float Real_Current = 0;
+bool Encoder = 0;
+bool previous_Encoder = LOW;
 
 void setup() {
 Serial.begin(9600);
@@ -17,16 +22,16 @@ pinMode(25,INPUT);
 }
 
 void loop() {
+httpResponseCode = sendMeasurement(Real_Voltage,Real_Current,Real_Speed,measurement_time);
 if (httpResponseCode > 0) {
 Serial.println(httpResponseCode);
 Serial.println(http.getString());
-unsigned long timing = millis();
-float Real_Voltage = analogRead(A0);
-float Real_Current = analogRead(A2);
-bool Encoder = digitalRead(25);
-if(timing - passing_time <= 100)
+timing = millis();
+Real_Voltage = analogRead(A0)(3.3/4095.0);
+Real_Current = analogRead(A2)(3.3/4095.0);
+Encoder = digitalRead(25);
+if(timing - passing_time >= 100)
 {
-bool previous_Encoder = LOW;
 if(Encoder == HIGH && previous_Encoder == LOW)
 {
 count++;
@@ -40,7 +45,6 @@ passing_time = timing;
 measurement_time+=100;
 count = 0;
 }
-sendMeasurement(Real_Voltage,Real_Current,Real_Speed,measurement_time);
 } 
 else 
 {
@@ -67,13 +71,12 @@ Serial.println(WiFi.localIP());
 }
 }
 
-void sendMeasurement(float Voltage, float Current, float Speed, unsigned int timer)
+int sendMeasurement(float Voltage, float Current, float Speed, unsigned int timer)
 {
 if (WiFi.status() == WL_CONNECTED) {
 HTTPClient http;
-http.begin("http://192.168.112.21:5000/gps");
+http.begin("http://192.168.112.21:5000/");
 http.addHeader("Content-Type", "application/json");
-
 StaticJsonDocument<5000> doc;
 doc["Voltage"] = Voltage;
 doc["Current"] = Current;
@@ -86,4 +89,4 @@ http.end();
 } else {
 Serial.println("WiFi disconnected");
 }
-}
+}return httpResponseCode;
