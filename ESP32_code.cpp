@@ -4,7 +4,6 @@
 #define WIFI_NETWORK ""
 #define WIFI_PASSWORD ""
 #define WIFI_TIMEOUT_MS 100000
-#define slots 20
 int count = 0;
 float Real_Speed = 0;
 unsigned long passing_time = 0;
@@ -14,6 +13,7 @@ float Real_Voltage = 0;
 float Real_Current = 0;
 bool Encoder = 0;
 bool previous_Encoder = LOW;
+int httpResponseCode = 0;
 
 void setup() {
 Serial.begin(9600);
@@ -25,12 +25,11 @@ void loop() {
 httpResponseCode = sendMeasurement(Real_Voltage,Real_Current,Real_Speed,measurement_time);
 if (httpResponseCode > 0) {
 Serial.println(httpResponseCode);
-Serial.println(http.getString());
 timing = millis();
-Real_Voltage = analogRead(A0)(3.3/4095.0);
-Real_Current = analogRead(A2)(3.3/4095.0);
+Real_Voltage = analogRead(A0)*(3.3/4095.0);
+Real_Current = analogRead(A2)*(3.3/4095.0);
 Encoder = digitalRead(25);
-if(timing - passing_time >= 100)
+if(timing - passing_time <= 100)
 {
 if(Encoder == HIGH && previous_Encoder == LOW)
 {
@@ -84,9 +83,10 @@ doc["Speed"] = Speed;
 doc["timer"] = timer;
 String body;
 serializeJson(doc, body);
-int httpResponseCode = http.POST(body);
+int response = http.POST(body);
 http.end();
+return response;
 } else {
 Serial.println("WiFi disconnected");
 }
-}return httpResponseCode;
+}
