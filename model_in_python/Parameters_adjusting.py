@@ -98,7 +98,20 @@ result = lmfit.minimize(
 print("\n# Fit results:")
 lmfit.report_fit(result)
 
+#i added ability to save in json file for server to use
+import json
 
+coeff_dict = {
+    "a": float(result.params["a"].value),
+    "b": float(result.params["b"].value),
+    "c": float(result.params["c"].value),
+    "d": float(result.params["d"].value),
+    "e": float(result.params["e"].value),
+    "f": float(result.params["f"].value),
+}
+with open("wm_equation_coeffs.json", "w") as f:
+    json.dump(coeff_dict, f, indent=2)
+print("saved coefficients to wm_equation_coeffs.json for the live server to use.")
 solution = solve_ivp(
     lambda t, y: differential_equation(t, y, result.params),
     [time_data[0], time_data[-1]],

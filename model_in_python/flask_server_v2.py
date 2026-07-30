@@ -10,8 +10,8 @@ app = Flask(__name__)
 
 DB_CONFIG = {
     "host": "localhost",
-    "user": "twinuser",
-    "password": "password123",
+    "user": "root",
+    "password": os.environ.get("DB_PASSWORD"),
     "database": "virtualtwin",
 }
 
@@ -47,48 +47,38 @@ def load_coeffs():
 
 def compute_wm(Vr):
     """
-    Solves for the steady-state speed given the discovered differential
-    equation:
-        d(speed)/dt = c0 + c1*speed + c2*Vr + c3*speed^2 + c4*speed*Vr + c5*Vr^2
+    Solves for the steady-state speed given the fitted differential equation:
+        dWm/dt = a + b*Wm - c*Vr + d*Wm^2 - e*Wm*Vr + f*Vr^2
 
-    At steady state, d(speed)/dt = 0. Grouping as a quadratic in speed:
-        a*speed^2 + b(Vr)*speed + c(Vr) = 0
-        a = c3
-        b(Vr) = c1 + c4*Vr
-        c(Vr) = c0 + c2*Vr + c5*Vr^2
-
-    NOTE: this equation currently produces steady-state values roughly
-    5-8x larger than the motor's real known range (~55-65 RPM at 12V),
-    and does not return ~0 at Vr=0 as physically expected. Most likely
-    cause: a time-units mismatch (milliseconds vs seconds) in the
-    original PySINDy fit. Not corrected here due to time constraints --
-    documented as a known limitation.
+    At steady state, dWm/dt = 0. Grouping as a quadratic in Wm:
+        A*Wm^2 + B(Vr)*Wm + C(Vr) = 0
+        A = d
+        B(Vr) = b - e*Vr
+        C(Vr) = a - c*Vr + f*Vr^2
     """
     coeffs = load_coeffs()
     if coeffs is None:
         return None
 
-    a = coeffs["c3"]
-    b = coeffs["c1"] + coeffs["c4"] * Vr
-    c = coeffs["c0"] + coeffs["c2"] * Vr + coeffs["c5"] * Vr**2
+    A = coeffs["d"]
+    B = coeffs["b"] - coeffs["e"] * Vr
+    C = coeffs["a"] - coeffs["c"] * Vr + coeffs["f"] * Vr**2
 
-    if abs(a) < 1e-12:
-        # degenerate case: equation is effectively linear in speed
-        if abs(b) < 1e-12:
+    if abs(A) < 1e-12:
+        if abs(B) < 1e-12:
             return None
-        return -c / b
+        return -C / B
 
-    discriminant = b**2 - 4 * a * c
+    discriminant = B**2 - 4 * A * C
     if discriminant < 0:
-        return None  # no real steady-state solution for this voltage
+        return None
 
-    root1 = (-b + discriminant**0.5) / (2 * a)
-    root2 = (-b - discriminant**0.5) / (2 * a)
+    root1 = (-B + discriminant**0.5) / (2 * A)
+    root2 = (-B - discriminant**0.5) / (2 * A)
 
-    # pick the physically plausible root: prefer non-negative, smaller magnitude
     candidates = [r for r in (root1, root2) if r >= 0]
     if not candidates:
-        return max(root1, root2)  # both negative -- return the less-negative one
+        return max(root1, root2)
     return min(candidates)
 
 
@@ -115,25 +105,14 @@ def telemetry():
 
     db = get_db()
     cursor = db.cursor()
-
-    deviation = abs(Wr - Wm) if Wm is not None else None
-
-    cursor.execute("""
-    INSERT INTO MotorLogs
-    (Vr, Wr, time_r, Wm, time_m, deviation)
-    VALUES (%s, %s, %s, %s, %s, %s)
-    """, (
-       Vr,
-       Wr,
-       time_r,
-       Wm,
-       time_m,
-       deviation,
-    ))
-
+    cursor.execute(
+        "INSERT INTO MotorLogs (Vr, Wr, time_r, Wm, time_m) VALUES (%s, %s, %s, %s, %s)",
+        (Vr, Wr, time_r, Wm, time_m),
+    )
     db.commit()
     cursor.close()
     db.close()
+
     entry = {
         "t": time.time(),
         "Vr": Vr,
