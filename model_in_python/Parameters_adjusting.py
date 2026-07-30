@@ -8,8 +8,8 @@ import os
 
 DB_CONFIG = {
     "host": "localhost",
-    "user": "root",
-    "password": os.environ.get("DB_PASSWORD"),
+    "user": "twinuser",
+    "password": "password123",
     "database": "virtualtwin",
 }
 
