@@ -73,11 +73,14 @@ def resid(params, time_data, ydata):
         [ydata[0]],
         t_eval=time_data
     )
+    print("success:", solution.success)
+    print("message:", solution.message)
+    print("t:", solution.t)
+    print("y shape:", solution.y.shape)
 
     y_model = solution.y[0]
 
     return y_model - ydata
-
 params = lmfit.Parameters()
 
 params.add('a', value=1, min=-500, max=500)
@@ -90,7 +93,10 @@ result = lmfit.minimize(
     resid,
     params,
     args=(time_data, ydata),
-    method='differential_evolution'
+    #method='differential_evolution',
+    method = 'leastsq',
+    #adding to make it stop
+    max_nfev=200
 )
 
 
@@ -118,6 +124,11 @@ solution = solve_ivp(
     t_eval=time_data
 )
 
+print(solution.success)
+print(solution.message)
+print(solution.t)
+print(solution.y.shape)
+print(time_data)
 fitted = solution.y[0]
 
 import requests
@@ -138,7 +149,7 @@ for i in range(len(time_data)):
     }
 #connect the flask server here 
     requests.post(
-        "http://your_flask_ip:5000/motor_update",
+        "http://127.0.0.1:5000/motor_update",
         json=payload
     )
 

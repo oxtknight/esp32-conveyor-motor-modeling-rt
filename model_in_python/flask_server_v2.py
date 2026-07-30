@@ -10,8 +10,8 @@ app = Flask(__name__)
 
 DB_CONFIG = {
     "host": "localhost",
-    "user": "twinuser",
-    "password": "password123",
+    "user": "root",
+    "password": os.environ.get("DB_PASSWORD"),
     "database": "virtualtwin",
 }
 
@@ -48,21 +48,21 @@ def load_coeffs():
 def compute_wm(Vr):
     """
     Solves for the steady-state speed given the fitted differential equation:
-        dWm/dt = a + b*Wm + c*Vr + d*Wm*Vr  + d*Vr^2  + f*Vr^3
+        dWm/dt = a + b*Wm + c*Vr + d*Wm*Vr + e*Wm^2 + f*Vr^3
 
     At steady state, dWm/dt = 0. Grouping as a quadratic in Wm:
         A*Wm^2 + B(Vr)*Wm + C(Vr) = 0
-        A = d
-        B(Vr) = b - e*Vr
-        C(Vr) = a - c*Vr + f*Vr^2
+        A = e
+        B(Vr) = b + d*Vr
+        C(Vr) = a + c*Vr + f*Vr^3
     """
     coeffs = load_coeffs()
     if coeffs is None:
         return None
 
-    A = coeffs["d"]
-    B = coeffs["b"] - coeffs["e"] * Vr
-    C = coeffs["a"] - coeffs["c"] * Vr + coeffs["f"] * Vr**3
+    A = coeffs["e"]
+    B = coeffs["b"] + coeffs["d"] * Vr
+    C = coeffs["a"] + coeffs["c"] * Vr + coeffs["f"] * Vr**3
 
     if abs(A) < 1e-12:
         if abs(B) < 1e-12:
