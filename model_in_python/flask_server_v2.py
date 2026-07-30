@@ -48,7 +48,7 @@ def load_coeffs():
 def compute_wm(Vr):
     """
     Solves for the steady-state speed given the fitted differential equation:
-        dWm/dt = a + b*Wm - c*Vr + d*Wm^2 - e*Wm*Vr + f*Vr^2
+        dWm/dt = a + b*Wm + c*Vr + d*Wm*Vr  + d*Vr^2  + f*Vr^3
 
     At steady state, dWm/dt = 0. Grouping as a quadratic in Wm:
         A*Wm^2 + B(Vr)*Wm + C(Vr) = 0
@@ -62,7 +62,7 @@ def compute_wm(Vr):
 
     A = coeffs["d"]
     B = coeffs["b"] - coeffs["e"] * Vr
-    C = coeffs["a"] - coeffs["c"] * Vr + coeffs["f"] * Vr**2
+    C = coeffs["a"] - coeffs["c"] * Vr + coeffs["f"] * Vr**3
 
     if abs(A) < 1e-12:
         if abs(B) < 1e-12:
