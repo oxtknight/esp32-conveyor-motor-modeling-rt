@@ -56,10 +56,10 @@ def differential_equation(t, y, params):
     dydt = (
         a
         + b * y[0]
-        - c * V
-        + d * y[0]**2
-        - e * y[0] * V
-        + f * V**2
+        + c * V
+        + d * y[0]*V
+        + e * y[0]**2
+        + f * V**3
     )
 
     return [dydt]
@@ -80,13 +80,12 @@ def resid(params, time_data, ydata):
 
 params = lmfit.Parameters()
 
-params.add('a', 1)
-params.add('b', 1)
-params.add('c', 1)
-params.add('d', 1)
-params.add('e', 1)
-params.add('f', 1)
-
+params.add('a', value=1, min=-500, max=500)
+params.add('b', value=1, min=-500, max=500)
+params.add('c', value=1, min=-500, max=500)
+params.add('d', value=1, min=-500, max=500)
+params.add('e', value=1, min=-500, max=500)
+params.add('f', value=1, min=-500, max=500)
 result = lmfit.minimize(
     resid,
     params,
