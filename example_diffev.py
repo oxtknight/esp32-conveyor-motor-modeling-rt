@@ -37,19 +37,46 @@ Wr     = np.array([row[3] for row in rows])
 
 cursor.close()
 db.close()
-
-Wr_measured = Wr
-
+"""
 def resid(params, Vr, Wr):
     a = params['a'].value
     b = params['b'].value
     c = params['c'].value
     d = params['d'].value
-    e = params['e'].value
-    f = params['f'].value
     g = params['g'].value
-    Wm = a*Wr*Vr + (b/2)*Vr*Wr**2 + (c/2)*Wr*Vr**2 + (d/4)*(Wr**2)*(Vr**2) + (e/3)*Wr*Vr**3 + (f/4)*Wr*Vr**4 + g
+    # Normalize inputs
+    Vn = Vr / 12.0
+    Wn = Wr / 60.0
+    Wm = a*Wn*Vn + (b/2)*Vn*Wn**2 + (c/2)*Wn*Vn**2 + (d/4)*(Wn**2)*(Vn**2) + g
+    # Convert back to RPM
+    Wm = Wm * 60.0
     return Wm - Wr
+"""
+def resid(params, Vr, Wr):
+
+    a = params['a'].value
+    b = params['b'].value
+    c = params['c'].value
+    d = params['d'].value
+    g = params['g'].value
+
+    Wm = (
+        a*Wr*Vr
+        +(b/2)*Vr*Wr**2
+        +(c/2)*Wr*Vr**2
+        +(d/4)*(Wr**2)*(Vr**2)
+        +g
+    )
+
+    penalty = np.zeros_like(Wm)
+
+    # motor cannot exceed rated speed
+    penalty[Wm > 1] = (Wm[Wm > 1]-1)*50
+
+    # motor cannot go negative
+    penalty[Wm < 0] = (-Wm[Wm < 0])*50
+
+    return (Wm - Wr) + penalty
 ###############################################################################
 # Generate synthetic data and set-up Parameters with initial values/boundaries:
 #a = 0
@@ -62,39 +89,38 @@ def resid(params, Vr, Wr):
 #Those are only for testing
 #############################################################################
 params = lmfit.Parameters()
-params.add('a', 0, min=-500, max=500)
-params.add('b', 0, min=-500, max=500)
-params.add('c', 0, min=-500, max=500)
-params.add('d', 0, min=-500, max=500)
-params.add('e', 0, min=-500, max=500)
-params.add('f', 0, min=-500, max=500)
-params.add('g', 0, min=-500, max=500)
+params.add('a', 0, min=-10, max=10)
+params.add('b', 0, min=-10, max=10)
+params.add('c', 0, min=-10, max=10)
+params.add('d', 0, min=-10, max=10)
+params.add('g', 0, min=-0.8, max=0.8)
 ###############################################################################
 # Perform the fits and show fitting results and plot:
 #o1 = lmfit.minimize(resid, params, args=(x, yn), method='leastsq')
 #print("# Fit using leastsq:")
 #lmfit.report_fit(o1)
 ###############################################################################
-o2 = lmfit.minimize(resid, params, args=(Vr, Wr), method='differential_evolution')
+Vn = Vr / 12.0
+Wn = Wr / 60.0
+print("FIT Vr:", Vn.min(), Vn.max())
+print("FIT Wr:", Wn.min(), Wn.max())
+o2 = lmfit.minimize(resid, params, args=(Vn, Wn), method='leastsq')
 print("\n\n# Fit using differential_evolution:")
 lmfit.report_fit(o2)
 best = o2.params
 Wm = (
-    best["a"].value * Wr * Vr
-    + (best["b"].value / 2) * Vr * Wr**2
-    + (best["c"].value / 2) * Wr * Vr**2
-    + (best["d"].value / 4) * Wr**2 * Vr**2
-    + (best["e"].value / 3) * Wr * Vr**3
-    + (best["f"].value / 4) * Wr * Vr**4
+    best["a"].value * Wn * Vn
+    + (best["b"].value / 2) * Vn * Wn**2
+    + (best["c"].value / 2) * Wn * Vn**2
+    + (best["d"].value / 4) * Wn**2 * Vn**2
     + best["g"].value
 )
+Wm=Wm*60
 wm_equation_coeffs = {
     "a": best["a"].value,
     "b": best["b"].value,
     "c": best["c"].value,
     "d": best["d"].value,
-    "e": best["e"].value,
-    "f": best["f"].value,
     "g": best["g"].value,
     "time_m": int(time_r[-1])
 }
@@ -124,8 +150,14 @@ response = requests.post(
 print(response.status_code)
 print(response.text)
 ###############################################################################
+print("Vr:", Vr[:5], "...", Vr[-1])
+print("Wr:", Wr[:5], "...", Wr[-1])
+print("Wm:", Wm[:5], "...", Wm[-1])
+
+print("Wr range:", np.min(Wr), np.max(Wr))
+print("Wm range:", np.min(Wm), np.max(Wm))
+order = np.argsort(Vr)
 plt.plot(Vr, Wr, 'o', label='data')
-#plt.plot(x, yn+o1.residual, '-', label='leastsq')
-plt.plot(Vr, Wm, '--', label='diffev')
+plt.plot(Vr[order], Wm[order], '--', label='diffev')
 plt.legend()
 plt.show()
