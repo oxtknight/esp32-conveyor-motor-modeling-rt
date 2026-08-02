@@ -10,8 +10,8 @@ app = Flask(__name__)
 
 DB_CONFIG = {
     "host": "localhost",
-    "user": "root",
-    "password": os.environ.get("DB_PASSWORD"),
+    "user": "twinuser",
+    "password": "password123",
     "database": "virtualtwin",
 }
 
@@ -128,17 +128,56 @@ def telemetry():
 
 @app.route("/latest", methods=["GET"])
 def latest():
-    with lock:
-        if not history:
-            return jsonify({"error": "no data yet"}), 404
-        return jsonify(history[-1])
-
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT Vr, Wr, Wm, time_r
+        FROM MotorLogs
+        ORDER BY id DESC
+        LIMIT 1
+    """)
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not row:
+        return jsonify({"error": "no data"}), 404
+    Vr, Wr, Wm, time_r = row
+    t_sec = time_r / 1000.0
+    entry = {
+        "t": t_sec,
+        "Vr": Vr,
+        "Wr": Wr,
+        "Wm": Wm,
+        "deviation": abs(Wr - Wm) if Wm is not None else None,
+    }
+    return jsonify(entry)
 
 @app.route("/history", methods=["GET"])
 def get_history():
     n = request.args.get("n", default=100, type=int)
-    with lock:
-        data = list(history)[-n:]
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT Vr, Wr, Wm, time_r
+        FROM MotorLogs
+        ORDER BY id DESC
+        LIMIT %s
+    """, (n,))
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    # Reverse to chronological order
+    rows.reverse()
+    data = []
+    for Vr, Wr, Wm, time_r in rows:
+        t_sec = time_r / 1000.0
+        data.append({
+            "t": t_sec,
+            "Vr": Vr,
+            "Wr": Wr,
+            "Wm": Wm,
+            "deviation": abs(Wr - Wm) if Wm is not None else None,
+        })
     return jsonify(data)
 
 
