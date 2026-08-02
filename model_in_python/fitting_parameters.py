@@ -14,7 +14,7 @@ DB_CONFIG = {
     "host": "localhost",
     "user": "pythonuser",
     "password": "your_password",
-    "database": "virtualData",
+    "database": "virtualtwin",
 }
 
 def get_db():
@@ -36,7 +36,11 @@ ids    = np.array([row[0] for row in rows])
 time_r = np.array([row[1] for row in rows])
 Vr     = np.array([row[2] for row in rows])
 Wr     = np.array([row[3] for row in rows])
-
+start = 3000
+ids = ids[start:]
+time_r = time_r[start:]
+Vr = Vr[start:]
+Wr = Wr[start:]
 cursor.close()
 db.close()
 """
@@ -95,7 +99,7 @@ params.add('a', 0, min=-10, max=10)
 params.add('b', 0, min=-10, max=10)
 params.add('c', 0, min=-10, max=10)
 params.add('d', 0, min=-10, max=10)
-params.add('g', 0, min=-0.8, max=0.8)
+params.add('g', 0, min=-1, max=1)
 ###############################################################################
 # Perform the fits and show fitting results and plot:
 #o1 = lmfit.minimize(resid, params, args=(x, yn), method='leastsq')
@@ -152,6 +156,11 @@ response = requests.post(
 print(response.status_code)
 print(response.text)
 ###############################################################################
+valid_idx = Wm > 1.0  # Only calculate percentage when speed is > 1 rad/s
+pct_error = np.mean(np.abs((Wm[valid_idx] - Wr[valid_idx]) / Wm[valid_idx])) * 100
+
+print(f"Average Percentage Error: {pct_error:.2f}%")
+print(f"Average Twin Accuracy: {100 - pct_error:.2f}%")
 print("Vr:", Vr[:5], "...", Vr[-1])
 print("Wr:", Wr[:5], "...", Wr[-1])
 print("Wm:", Wm[:5], "...", Wm[-1])
@@ -170,3 +179,59 @@ Wm_smoothed = savgol_filter(Wm[order], window_length=201, polyorder=2)
 plt.plot(Vr[order], Wm_smoothed, '--', label='diffev')
 plt.legend()
 plt.show()
+
+print(Wr.shape)
+print(Wm.shape)
+
+
+# 1. Define sampling period in seconds (100 ms = 0.1 s)
+dt = 0.1  
+
+# 2. Reconstruct the time vector based on data length
+# (If you already have a 'time' array/column from your DB, just use that directly)
+num_points = len(Wm)
+time = np.arange(0, num_points * dt, dt)
+
+# 3. Create the plot vs. Time
+plt.figure(figsize=(12, 4))
+
+# Plot Measured vs Fitted Speed on Primary Axis
+#plt.plot(time, Wm, 'b.', label='Measured Speed (Wm)', alpha=0.5, markersize=3)
+#plt.plot(time, Wr, 'r--', label='Model Speed (Wr)', linewidth=1.5)
+step = 20   # only for visualization
+
+plt.plot(time[::step], Wm[::step],
+         color='blue',
+         linestyle='None',
+         marker='.',
+         markersize=3,
+         alpha=0.5,
+         label='Measured Speed (Wm)')
+
+plt.plot(time[::step], Wr[::step],
+         color='red',
+         linestyle='-',
+         linewidth=1,
+         label='Model Speed (Wr)')
+
+plt.xlabel('Time (seconds)', fontsize=12)
+plt.ylabel('Speed (rad/s or RPM)', fontsize=12)
+plt.title('Digital Twin Tracking: Measured vs. Fitted Speed over Time', fontsize=14)
+plt.legend(loc='upper left')
+plt.grid(True, linestyle='--', alpha=0.6)
+
+# Optional: Plot Input Voltage on a secondary Y-axis to see how speed responds
+ax2 = plt.gca().twinx()
+ax2.plot(time, Vr, 'g-', label='Input Voltage (Vr)', alpha=0.3)
+#ax2.set_ylabel('Voltage (V)', color='g', fontsize=12)
+ax2.tick_params(axis='y', labelcolor='g')
+
+plt.tight_layout()
+plt.show()
+error = Wm - Wr
+
+RMSE = np.sqrt(np.mean(error**2))
+MAE = np.mean(np.abs(error))
+
+print("RMSE =", RMSE)
+print("MAE =", MAE)
