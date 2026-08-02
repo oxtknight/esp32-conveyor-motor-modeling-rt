@@ -10,8 +10,8 @@ from scipy.signal import savgol_filter
 #################################################################
 DB_CONFIG = {
     "host": "localhost",
-    "user": "pythonuser",
-    "password": "your_password",
+    "user": "twinuser",
+    "password": "password123",
     "database": "virtualtwin",
 }
 
