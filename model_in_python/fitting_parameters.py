@@ -5,6 +5,8 @@ import lmfit
 import mysql.connector
 import os
 import requests
+from scipy.signal import savgol_filter
+
 ##################################################################
 #Taking from MySQL
 # Using your lead configuration
@@ -12,7 +14,7 @@ DB_CONFIG = {
     "host": "localhost",
     "user": "pythonuser",
     "password": "your_password",
-    "database": "virtualtwin",
+    "database": "virtualData",
 }
 
 def get_db():
@@ -153,11 +155,18 @@ print(response.text)
 print("Vr:", Vr[:5], "...", Vr[-1])
 print("Wr:", Wr[:5], "...", Wr[-1])
 print("Wm:", Wm[:5], "...", Wm[-1])
-
+# Using filter tom eliminate noise
+Wm_smoothed = savgol_filter(Wm, window_length=201, polyorder=2)
+#priting values range
+print(os.path.abspath("virtualtwin.sql"))
 print("Wr range:", np.min(Wr), np.max(Wr))
 print("Wm range:", np.min(Wm), np.max(Wm))
+# Srting Data
 order = np.argsort(Vr)
 plt.plot(Vr, Wr, 'o', label='data')
-plt.plot(Vr[order], Wm[order], '--', label='diffev')
+# Using filter tom eliminate noise - Savitzky-Golay 
+Wm_smoothed = savgol_filter(Wm[order], window_length=201, polyorder=2)
+# Ploting result
+plt.plot(Vr[order], Wm_smoothed, '--', label='diffev')
 plt.legend()
 plt.show()
