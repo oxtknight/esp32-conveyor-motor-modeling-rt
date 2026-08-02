@@ -14,7 +14,7 @@ DB_CONFIG = {
     "host": "localhost",
     "user": "pythonuser",
     "password": "your_password",
-    "database": "virtualtwin",
+    "database": "virtualData",
 }
 
 def get_db():
