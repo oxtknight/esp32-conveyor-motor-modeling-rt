@@ -1,4 +1,4 @@
-# ---------------------------------Basic Version------------------------------------------
+ 
 # import packages
 import numpy as np
 from numpy.random import seed
