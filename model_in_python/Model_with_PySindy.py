@@ -60,14 +60,6 @@ model2 = ps.SINDy(
 
 model2.fit( x=theta_tr,t=t_tr, u=v_tr, quiet=True, multiple_trajectories=True)
 
-for i in range(len(theta_tr)):
-    if len(theta_tr[i]) != len(v_tr[i]) or len(theta_tr[i]) != len(t_tr[i]):
-        print("Mismatch at experiment:", i)
-        print(
-            len(theta_tr[i]),
-            len(v_tr[i]),
-            len(t_tr[i])
-        )
 # Print discovered equation
 model2.print()
 
