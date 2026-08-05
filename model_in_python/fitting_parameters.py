@@ -7,14 +7,12 @@ import os
 import requests
 from scipy.signal import savgol_filter
 
-##################################################################
-#Taking from MySQL
-# Using your lead configuration
+#################################################################
 DB_CONFIG = {
     "host": "localhost",
     "user": "pythonuser",
     "password": "your_password",
-    "database": "virtualData",
+    "database": "virtualtwin",
 }
 
 def get_db():
@@ -25,7 +23,7 @@ cursor = db.cursor()
 
 cursor.execute("""
 SELECT id, time_r, Vr, Wr
-FROM MotorLogs
+FROM MotorLors
 WHERE Wr IS NOT NULL
 ORDER BY time_r
 """)
@@ -36,11 +34,26 @@ ids    = np.array([row[0] for row in rows])
 time_r = np.array([row[1] for row in rows])
 Vr     = np.array([row[2] for row in rows])
 Wr     = np.array([row[3] for row in rows])
+"""
+# Use all available measurements
+start = 0
+
+ids = ids[start:]
+time_r = time_r[start:]
+Vr = Vr[start:]
+Wr = Wr[start:]
+"""
+print(f"Loaded {len(Vr)} samples from the database.")
+
+if len(Vr) == 0:
+    raise RuntimeError("Collect data before running the fitting script.")
+
 start = 3000
 ids = ids[start:]
 time_r = time_r[start:]
 Vr = Vr[start:]
 Wr = Wr[start:]
+
 cursor.close()
 db.close()
 """
@@ -66,22 +79,12 @@ def resid(params, Vr, Wr):
     d = params['d'].value
     g = params['g'].value
 
-    Wm = (
-        a*Wr*Vr
-        +(b/2)*Vr*Wr**2
-        +(c/2)*Wr*Vr**2
-        +(d/4)*(Wr**2)*(Vr**2)
-        +g
-    )
-
+    Wm = a*Wr*Vr +(b/2)*Vr*Wr**2 +(c/2)*Wr*Vr**2 +(d/4)*(Wr**2)*(Vr**2) +g
     penalty = np.zeros_like(Wm)
-
     # motor cannot exceed rated speed
     penalty[Wm > 1] = (Wm[Wm > 1]-1)*50
-
     # motor cannot go negative
     penalty[Wm < 0] = (-Wm[Wm < 0])*50
-
     return (Wm - Wr) + penalty
 ###############################################################################
 # Generate synthetic data and set-up Parameters with initial values/boundaries:
@@ -106,6 +109,7 @@ params.add('g', 0, min=-1, max=1)
 #print("# Fit using leastsq:")
 #lmfit.report_fit(o1)
 ###############################################################################
+#Normalizing values
 Vn = Vr / 12.0
 Wn = Wr / 60.0
 print("FIT Vr:", Vn.min(), Vn.max())
@@ -121,6 +125,7 @@ Wm = (
     + (best["d"].value / 4) * Wn**2 * Vn**2
     + best["g"].value
 )
+# Reconverting
 Wm=Wm*60
 wm_equation_coeffs = {
     "a": best["a"].value,
@@ -146,12 +151,9 @@ cursor.close()
 db.close()
 ###############################################################################
 #Sending Data to flask
-url = "http://localhost:5000/wm_equation_coeffs.json"
+url = "http://127.0.0.1:5000/wm_equation_coeffs.json"
 
-response = requests.post(
-    url,
-    json = wm_equation_coeffs
-)
+response = requests.post(url,json = wm_equation_coeffs)
 
 print(response.status_code)
 print(response.text)
@@ -164,35 +166,36 @@ print(f"Average Twin Accuracy: {100 - pct_error:.2f}%")
 print("Vr:", Vr[:5], "...", Vr[-1])
 print("Wr:", Wr[:5], "...", Wr[-1])
 print("Wm:", Wm[:5], "...", Wm[-1])
-# Using filter tom eliminate noise
-Wm_smoothed = savgol_filter(Wm, window_length=201, polyorder=2)
+# Using filter eliminate noise
+#Wm_smoothed = savgol_filter(Wm, window_length=201, polyorder=2)
 #priting values range
-print(os.path.abspath("virtualtwin.sql"))
 print("Wr range:", np.min(Wr), np.max(Wr))
 print("Wm range:", np.min(Wm), np.max(Wm))
 # Srting Data
-order = np.argsort(Vr)
-plt.plot(Vr, Wr, 'o', label='data')
-# Using filter tom eliminate noise - Savitzky-Golay 
-Wm_smoothed = savgol_filter(Wm[order], window_length=201, polyorder=2)
+#order = np.argsort(Vr)
+#plt.plot(Vr, Wr, 'o', label='data')
 # Ploting result
-plt.plot(Vr[order], Wm_smoothed, '--', label='diffev')
+#plt.plot(Vr[order], Wm_smoothed[order], '--', label='diffev')
+#order = np.argsort(Vr)
+#plt.plot(Vr, Wr, 'o', label='data')
+#plt.plot(Vr[order],Wm[order],'--',label='diffev')
+#plt.legend()
+#plt.show()
+order = np.argsort(Vr)
+Wm_sorted = Wm[order]
+Wm_smoothed = savgol_filter(Wm_sorted,window_length=201,polyorder=2)
+plt.plot(Vr, Wr, 'o', label='data')
+plt.plot(Vr[order],Wm_smoothed,'--',label='diffev')
 plt.legend()
 plt.show()
-
-print(Wr.shape)
-print(Wm.shape)
-
-
-# 1. Define sampling period in seconds (100 ms = 0.1 s)
+# Time step
 dt = 0.1  
 
-# 2. Reconstruct the time vector based on data length
-# (If you already have a 'time' array/column from your DB, just use that directly)
+# Reconstruct the time vector based on data length
 num_points = len(Wm)
 time = np.arange(0, num_points * dt, dt)
 
-# 3. Create the plot vs. Time
+# plot vs. Time
 plt.figure(figsize=(12, 4))
 
 # Plot Measured vs Fitted Speed on Primary Axis
@@ -200,32 +203,14 @@ plt.figure(figsize=(12, 4))
 #plt.plot(time, Wr, 'r--', label='Model Speed (Wr)', linewidth=1.5)
 step = 20   # only for visualization
 
-plt.plot(time[::step], Wm[::step],
-         color='blue',
-         linestyle='None',
-         marker='.',
-         markersize=3,
-         alpha=0.5,
-         label='Measured Speed (Wm)')
+plt.plot(time[::step], Wm[::step], color='blue', linestyle='None', marker='.', markersize=3, alpha=0.5, label='Measured Speed (Wm)')
 
-plt.plot(time[::step], Wr[::step],
-         color='red',
-         linestyle='-',
-         linewidth=1,
-         label='Model Speed (Wr)')
-
+plt.plot(time[::step], Wr[::step], color='red', linestyle='-', linewidth=1, label='Model Speed (Wr)')
 plt.xlabel('Time (seconds)', fontsize=12)
 plt.ylabel('Speed (rad/s or RPM)', fontsize=12)
 plt.title('Digital Twin Tracking: Measured vs. Fitted Speed over Time', fontsize=14)
 plt.legend(loc='upper left')
 plt.grid(True, linestyle='--', alpha=0.6)
-
-# Optional: Plot Input Voltage on a secondary Y-axis to see how speed responds
-ax2 = plt.gca().twinx()
-ax2.plot(time, Vr, 'g-', label='Input Voltage (Vr)', alpha=0.3)
-#ax2.set_ylabel('Voltage (V)', color='g', fontsize=12)
-ax2.tick_params(axis='y', labelcolor='g')
-
 plt.tight_layout()
 plt.show()
 error = Wm - Wr
