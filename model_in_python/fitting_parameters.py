@@ -23,7 +23,7 @@ cursor = db.cursor()
 
 cursor.execute("""
 SELECT id, time_r, Vr, Wr
-FROM MotorLors
+FROM V_measurements
 WHERE Wr IS NOT NULL
 ORDER BY time_r
 """)
@@ -48,7 +48,7 @@ print(f"Loaded {len(Vr)} samples from the database.")
 if len(Vr) == 0:
     raise RuntimeError("Collect data before running the fitting script.")
 
-start = 3000
+start = 3     #it was discarding the first 3000 rows of the database 
 ids = ids[start:]
 time_r = time_r[start:]
 Vr = Vr[start:]
@@ -183,7 +183,11 @@ print("Wm range:", np.min(Wm), np.max(Wm))
 #plt.show()
 order = np.argsort(Vr)
 Wm_sorted = Wm[order]
-Wm_smoothed = savgol_filter(Wm_sorted,window_length=201,polyorder=2)
+#Wm_smoothed = savgol_filter(Wm_sorted,window_length=201,polyorder=2) this didnt let the windwo of the figure open
+window_len = min(11, len(Wm_sorted) if len(Wm_sorted) % 2 == 1 else len(Wm_sorted) - 1)
+if window_len < 3:
+    window_len = 3
+Wm_smoothed = savgol_filter(Wm_sorted, window_length=window_len, polyorder=2)
 plt.plot(Vr, Wr, 'o', label='data')
 plt.plot(Vr[order],Wm_smoothed,'--',label='diffev')
 plt.legend()
