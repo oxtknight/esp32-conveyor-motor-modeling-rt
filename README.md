@@ -6,7 +6,7 @@ A digital twin system for a JGB37-520 conveyor motor: a data-driven
 equation predicts the motor's speed, and this prediction is compared in
 real time against the real measured speed. When they diverge beyond a
 threshold, that's flagged as a potential anomaly (friction, load
-change, developing fault) — the basis for predictive maintenance. Part
+change, developing fault) making it the basis for predictive maintenance. Part
 of an Industry 4.0 / CDTA project.
 
 ## Architecture overview
@@ -64,7 +64,7 @@ automatically within 60 seconds of any update.
 **Known limitation, stated plainly**: this equation uses both `Vr` and
 `Wr` (the real measured speed) as inputs to compute `Wm`. This means
 `Wm` is not fully independent of the value it's being compared
-against — worth treating this as closer to a calibrated
+against,worth treating this as closer to a calibrated
 smoothing/estimation model than a fully independent virtual twin. See
 the report's Discussion/Limitations section for the full reasoning.
 
