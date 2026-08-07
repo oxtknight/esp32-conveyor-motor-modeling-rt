@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.deb
+wm_equation_coeffs.json
+.venv/
+venv/
+*.log
+.DS_Store
