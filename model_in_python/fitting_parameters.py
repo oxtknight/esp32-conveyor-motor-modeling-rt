@@ -6,6 +6,7 @@ import mysql.connector
 import os
 import requests
 from scipy.signal import savgol_filter
+import json
 
 #################################################################
 DB_CONFIG = {
@@ -23,7 +24,7 @@ cursor = db.cursor()
 
 cursor.execute("""
 SELECT id, time_r, Vr, Wr
-FROM V_measurements
+FROM MotorLogs
 WHERE Wr IS NOT NULL
 ORDER BY time_r
 """)
@@ -136,6 +137,10 @@ wm_equation_coeffs = {
     "time_m": int(time_r[-1])
 }
 ###############################################################################
+coeff_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wm_equation_coeffs.json")
+with open(coeff_path, "w") as f:
+    json.dump(wm_equation_coeffs, f, indent=2)
+print(f"Saved coefficients to {coeff_path}")
 #Sending to MySQL
 db = get_db()
 cursor = db.cursor()

@@ -15,7 +15,7 @@ DB_CONFIG = {
     "database": "virtualtwin",
 }
 
-COEFF_FILE = "wm_equation_coeffs.json"
+COEFF_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wm_equation_coeffs.json")
 
 lock = threading.Lock()
 history = deque(maxlen=500)
@@ -45,41 +45,35 @@ def load_coeffs():
     return _coeffs_cache
 
 
-def compute_wm(Vr):
+def compute_wm(Vr, Wr):
     """
-    Solves for the steady-state speed given the fitted differential equation:
-        dWm/dt = a + b*Wm + c*Vr + d*Wm*Vr + e*Wm^2 + f*Vr^3
+    Direct algebraic equation (normalized inputs):
+        Vn = Vr / 12.0
+        Wn = Wr / 60.0
+        Wm_norm = a*Wn*Vn + (b/2)*Vn*Wn^2 + (c/2)*Wn*Vn^2 + (d/4)*Wn^2*Vn^2 + g
+        Wm = Wm_norm * 60.0
 
-    At steady state, dWm/dt = 0. Grouping as a quadratic in Wm:
-        A*Wm^2 + B(Vr)*Wm + C(Vr) = 0
-        A = e
-        B(Vr) = b + d*Vr
-        C(Vr) = a + c*Vr + f*Vr^3
+    NOTE: this equation uses Wr (real speed) as an input, not just Vr.
+    Worth being explicit about in the report: this makes Wm partially
+    dependent on the real measurement it's being compared against,
+    which is a different design than a fully independent virtual twin.
     """
     coeffs = load_coeffs()
     if coeffs is None:
         return None
 
-    A = coeffs["e"]
-    B = coeffs["b"] + coeffs["d"] * Vr
-    C = coeffs["a"] + coeffs["c"] * Vr + coeffs["f"] * Vr**3
+    Vn = Vr / 12.0
+    Wn = Wr / 60.0
 
-    if abs(A) < 1e-12:
-        if abs(B) < 1e-12:
-            return None
-        return -C / B
+    Wm_norm = (
+        coeffs["a"] * Wn * Vn
+        + (coeffs["b"] / 2) * Vn * Wn**2
+        + (coeffs["c"] / 2) * Wn * Vn**2
+        + (coeffs["d"] / 4) * (Wn**2) * (Vn**2)
+        + coeffs["g"]
+    )
 
-    discriminant = B**2 - 4 * A * C
-    if discriminant < 0:
-        return None
-
-    root1 = (-B + discriminant**0.5) / (2 * A)
-    root2 = (-B - discriminant**0.5) / (2 * A)
-
-    candidates = [r for r in (root1, root2) if r >= 0]
-    if not candidates:
-        return max(root1, root2)
-    return min(candidates)
+    return Wm_norm * 60.0
 
 
 @app.route("/", methods=["GET"])
@@ -100,7 +94,7 @@ def telemetry():
     Wr = float(data["Wr"])
     time_r = data.get("time", int(time.time() * 1000))
 
-    Wm = compute_wm(Vr)
+    Wm = compute_wm(Vr, Wr)
     time_m = int(time.time() * 1000) if Wm is not None else None
 
     db = get_db()
@@ -150,34 +144,13 @@ def latest():
         "Wm": Wm,
         "deviation": abs(Wr - Wm) if Wm is not None else None,
     }
-    return jsonify(entry)
+    return jsonify(entry)   
 
 @app.route("/history", methods=["GET"])
 def get_history():
     n = request.args.get("n", default=100, type=int)
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT Vr, Wr, Wm, time_r
-        FROM MotorLogs
-        ORDER BY id DESC
-        LIMIT %s
-    """, (n,))
-    rows = cursor.fetchall()
-    cursor.close()
-    db.close()
-    # Reverse to chronological order
-    rows.reverse()
-    data = []
-    for Vr, Wr, Wm, time_r in rows:
-        t_sec = time_r / 1000.0
-        data.append({
-            "t": t_sec,
-            "Vr": Vr,
-            "Wr": Wr,
-            "Wm": Wm,
-            "deviation": abs(Wr - Wm) if Wm is not None else None,
-        })
+    with lock:
+        data = list(history)[-n:]
     return jsonify(data)
 
 
