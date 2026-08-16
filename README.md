@@ -1,128 +1,106 @@
-# Conveyor Motor Digital Twin — Project README
+# esp32-conveyor-motor-modeling-rt
 
-## What this project is
+A digital twin for a **JGB37-520 conveyor motor**, built for a real-time anomaly detection and predictive maintenance pipeline. The system reads live voltage/speed telemetry from an ESP32, computes a model-predicted speed on the server, and flags an anomaly whenever the measured and predicted speeds diverge past a threshold.
 
-A digital twin system for a JGB37-520 conveyor motor: a data-driven
-equation predicts the motor's speed, and this prediction is compared in
-real time against the real measured speed. When they diverge beyond a
-threshold, that's flagged as a potential anomaly (friction, load
-change, developing fault) making it the basis for predictive maintenance. Part
-of an Industry 4.0 / CDTA project.
+A data-driven equation predicts the motor's speed, and this prediction is compared in real time against the real measured speed. When they diverge beyond a threshold, that's flagged as a potential anomaly (friction, load change, developing fault), making it the basis for predictive maintenance. Part of an Industry 4.0 project. Developed during an internship at **CDTA** (Centre de Développement des Technologies Avancées), Division Productique et Robotique (DPR), under the supervision of Mr. Bendjelloule.
 
-## Architecture overview
+## Overview
 
-```mermaid
-flowchart TD
-    A[ESP32 circuit<br/>encoder + voltage read] -->|Vr, Wr, time - JSON/HTTP| B[Flask server<br/>flask_server_v2.py]
-    B -->|Wm, time| C[Dashboard<br/>dashboard.html]
-    B -->|Vr, Wr+time, Wm+time| D[(MySQL<br/>MotorLogs table)]
-    D -->|fit Vr, Wr + time| E[fitting_parameters.py<br/>periodic re-fit]
-    E -->|Wm1 written back| D
-    E -.->|new equation, reload within 60s| B
-```
+The project explores two modelling approaches for the same motor:
 
-## Repo structure
+1. **Physics-based model** (`twin_motor.py`) — a DC motor ODE model (electrical + mechanical equations), integrated with adaptive sub-stepping. Kept as a legacy/reference model.
+2. **Data-driven model** (`fitting_parameters.py`) — a normalised algebraic polynomial fitted to logged telemetry using `lmfit` (Levenberg-Marquardt), used in production for the live twin.
+
+The live pipeline runs: **ESP32 → Flask server → MySQL + in-memory buffer → dashboard (Chart.js)**. The Flask server computes the model speed on each incoming reading, persists it, and serves both a live "latest reading" endpoint and a short-term rolling history for the dashboard chart.
+
+> **Note:** All data used for the final fit and validation was collected via a **Wokwi ESP32 simulation**, not the physical motor — the CDTA protoboard runs at 24V while the JGB37-520 requires 12V, which ruled out physical deployment during this internship. See the full report for details and caveats.
+
+## Repository structure
 
 ```
 .
-├── ESP32_code.cpp              # firmware: reads encoder+voltage, sends Vr/Wr/time
-├── dataset/
-│   └── final_combined_dataset.csv   # cleaned historical training data
-├── datasheets/                 # motor datasheet
-├── labview_files/               # early LabVIEW model exploration
+├── dataset/                  # Logged telemetry used for model fitting
+│   ├── final_combined_dataset.csv
+│   ├── low_voltage_data.csv
+│   └── V_measurements.csv
+├── datasheets/                # Manufacturer datasheet for the JGB37-520
+│   └── jgb37_520_60rpm_12v_datasheet.jpg
+├── ESP32_code.cpp             # ESP32 firmware (acquisition + telemetry POST)
+├── labview_files/
+│   └── DC_Motor_Model.vi      # LabVIEW reference model
 ├── model_in_python/
-│   ├── fitting_parameters.py   # fits the Wm equation from MySQL history
-│   ├── flask_server_v2.py      # live server: receives telemetry, computes Wm, serves dashboard
-│   ├── model_with_checking.py  # (in active use -- validation/checking variant)
-│   ├── Model_with_PySindy.py   # (in active use -- PySINDy-based exploration)
-│   └── templates/
-│       └── dashboard.html      # live Wr vs Wm chart
-├── pics/                        # hardware photos
-├── scripts/
-│   └── generate_synthetic_data.py
-└── virtualData.sql              # current MySQL schema/data dump
+│   ├── dashboard.html         # Live dashboard (Chart.js, served by Flask)
+│   ├── feed.py                # Telemetry feeder / test client
+│   ├── feed_csv.py            # Replays a CSV dataset as simulated telemetry
+│   ├── fitting_parameters.py  # Fits the data-driven polynomial to MotorLogs
+│   ├── flask_server_v2.py     # Main server: ingestion, model computation, API
+│   ├── model_with_checking.py # SINDy-based equation discovery (exploratory)
+│   ├── Model_with_PySindy.py  # SINDy-based equation discovery (exploratory)
+│   ├── templates/
+│   │   └── dashboard.html
+│   ├── twin_motor.py          # Physics-based ODE motor model
+│   └── wm_equation_coeffs.json # Latest fitted polynomial coefficients
+├── pics/                      # Hardware photos (encoder, driver, motor)
+├── results/                   # Result plots (fit vs. data, tracking over time)
+├── virtualData.sql            # MySQL schema / seed data
+├── LICENSE
+└── README.md
 ```
 
-## The equation
+## Hardware
 
-`fitting_parameters.py` fits a direct algebraic equation (not a
-differential equation) using normalized inputs:
+| Component | Role |
+|---|---|
+| JGB37-520 DC motor (12V, 168:1 gearbox) | Drives the conveyor belt |
+| Rotary encoder (20 PPR) | Speed feedback |
+| ACS712 current sensor | Present on hardware, not yet integrated into telemetry |
+| BTS7960 motor driver | H-bridge, PWM voltage control |
+| ESP32 (WiFi, 12-bit ADC) | Reads sensors, sends telemetry over HTTPS |
 
-```
-Vn = Vr / 12.0
-Wn = Wr / 60.0
-Wm_norm = a*Wn*Vn + (b/2)*Vn*Wn^2 + (c/2)*Wn*Vn^2 + (d/4)*Wn^2*Vn^2 + g
-Wm = Wm_norm * 60.0
-```
+## Software pipeline
 
-Fit via `lmfit` (nonlinear least squares) with physical bound penalties
-during fitting (speed can't exceed rated speed or go negative).
-Coefficients are saved to `wm_equation_coeffs.json` (generated locally,
-not tracked in git), which `flask_server_v2.py` reads and reloads
-automatically within 60 seconds of any update.
+- **ESP32** samples voltage and encoder pulses every 100ms, computes speed, and POSTs `{Vr, Wr, time}` to the Flask server's `/telemetry` endpoint.
+- **Flask server** (`flask_server_v2.py`) computes the model speed `Wm` from the fitted polynomial, inserts each reading into the `MotorLogs` MySQL table, and appends it (with deviation) to an in-memory rolling buffer used for short-term chart backfill.
+- **Fitting script** (`fitting_parameters.py`) periodically refits the polynomial against historical `MotorLogs` data and exports coefficients to `wm_equation_coeffs.json`.
+- **Dashboard** (`dashboard.html`) polls `/latest` every 500ms and plots real vs. model speed, with a status badge that turns red when deviation exceeds a 5 RPM threshold.
 
-**Known limitation, stated plainly**: this equation uses both `Vr` and
-`Wr` (the real measured speed) as inputs to compute `Wm`. This means
-`Wm` is not fully independent of the value it's being compared
-against,worth treating this as closer to a calibrated
-smoothing/estimation model than a fully independent virtual twin. See
-the report's Discussion/Limitations section for the full reasoning.
+**Known limitation, stated plainly**: this equation uses both `Vr` and `Wr` (the real measured speed) as inputs to compute `Wm`. This means `Wm` is not fully independent of the value it's being compared against — worth treating this as closer to a calibrated smoothing/estimation model than a fully independent virtual twin. See the report's Discussion/Limitations section for the full reasoning.
 
-## MySQL schema (`MotorLogs` table)
+## Model performance
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | int, auto-increment | primary key |
-| `Vr` | double | real applied voltage |
-| `Wr` | double | real measured speed |
-| `time_r` | bigint | timestamp of the real reading |
-| `Wm` | double, nullable | model-predicted speed |
-| `time_m` | bigint, nullable | timestamp Wm was computed |
-| `deviation` | double, nullable | `abs(Wr - Wm)` |
-| `created_at` | timestamp | auto-set on insert |
+The data-driven polynomial was fit against MotorLogs telemetry:
 
-## Scripts
+| Metric | Value |
+|---|---|
+| Average twin accuracy | 93.04% |
+| Average percentage error | 6.96% |
+| RMSE | 1.232 RPM |
+| MAE | 0.819 RPM |
 
-### `ESP32_code.cpp`
-Reads the encoder (speed, `Wr`) and an analog voltage reading (`Vr`),
-sends both plus a timestamp as JSON over HTTP to the Flask server's
-`/telemetry` endpoint. Tested via Wokwi simulation (virtual
-potentiometer for voltage, virtual rotary encoder for speed pulses),
-tunneled to a local Flask server via `cloudflared` since Wokwi runs in
-the cloud and can't reach `localhost` directly.
+**Important caveat:** the polynomial takes the real measured speed (`Wr`) as an input alongside voltage (`Vr`), so this accuracy reflects how closely the fitted curve reproduces `Wr` given both `Vr` and `Wr` — it is a calibration/smoothing curve, not an independent forward predictor. It's still useful for residual-based anomaly detection, since a sudden jump in `|Wr - Wm|` is meaningful regardless. A fully independent model (`Wm = f(Vr, Ir)`, not using `Wr`) is listed as future work.
 
-### `flask_server_v2.py`
-Receives telemetry, computes `Wm` from the cached equation
-coefficients, saves every reading to MySQL, keeps a short in-memory
-buffer for fast dashboard polling, and serves the dashboard page.
+## Known limitations
 
-### `fitting_parameters.py`
-Pulls all historical `(Vr, Wr)` data from MySQL, fits the equation
-above via `lmfit`, writes the fitted `Wm` back into historical rows,
-and saves the fitted coefficients to `wm_equation_coeffs.json` for the
-live server to pick up. Meant to be re-run periodically (not
-continuously) as more real data accumulates.
+- All fitting/validation data comes from the Wokwi simulator, not the physical motor.
+- `/history` is served from an in-memory buffer (not MySQL), so it resets on server restart.
+- The `MotorLogs.deviation` column is defined but never written by the server; deviation is computed on the fly.
+- The anomaly threshold (5 RPM) is hardcoded in the dashboard's JavaScript only, with no server-side source of truth.
+- `flask_server_v2.py` runs on Flask's development server and is not production-ready.
 
-### `templates/dashboard.html`
-Live-updating chart (polls every 500ms) showing real speed (`Wr`) vs
-model speed (`Wm`), with a status badge that flags "ANOMALY" when the
-deviation crosses a threshold.
+See the full internship report for a detailed discussion of limitations and future work.
 
-## Setup
+## Future work
+if possible:
+- Real hardware validation once a 12V-compatible protoboard is available.
+- Persist `/history` to MySQL.
+- Incorporate ACS712 current sensing for load-torque estimation.
+- Replace the static anomaly threshold with a server-side statistical control chart.
+- Independent forward model (`Wm = f(Vr, Ir)`) that doesn't depend on the measured speed.
 
-```bash
-pip install flask mysql-connector-python lmfit scipy numpy matplotlib
+## Authors
 
-# Live dashboard server:
-cd model_in_python
-python3 flask_server_v2.py
-# open http://127.0.0.1:5000/
+Aicha Badi and Chaima Mokeddem — internship project at CDTA, DPR (July 2026), supervised by Mr. Bendjelloule.
 
-# Re-fit the equation from accumulated MySQL data:
-python3 fitting_parameters.py
-```
+## License
 
-## Current status
-
-- Full pipeline built and verified at the code level-
-- Report in progress, including honest documentation of known limitations ( public-dataset-vs-own-hardware distinction from earlier project stages)
+See [LICENSE](./LICENSE).

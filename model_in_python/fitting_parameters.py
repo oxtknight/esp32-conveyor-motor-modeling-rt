@@ -6,14 +6,13 @@ import mysql.connector
 import os
 import requests
 from scipy.signal import savgol_filter
-import json
 
 #################################################################
 DB_CONFIG = {
     "host": "localhost",
-    "user": "twinuser",
-    "password": "password123",
-    "database": "virtualtwin",
+    "user": "devuser",
+    "password": "your_password",
+    "database": "virtualData",
 }
 
 def get_db():
@@ -24,7 +23,7 @@ cursor = db.cursor()
 
 cursor.execute("""
 SELECT id, time_r, Vr, Wr
-FROM MotorLogs
+FROM V_measurements
 WHERE Wr IS NOT NULL
 ORDER BY time_r
 """)
@@ -137,16 +136,12 @@ wm_equation_coeffs = {
     "time_m": int(time_r[-1])
 }
 ###############################################################################
-coeff_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wm_equation_coeffs.json")
-with open(coeff_path, "w") as f:
-    json.dump(wm_equation_coeffs, f, indent=2)
-print(f"Saved coefficients to {coeff_path}")
 #Sending to MySQL
 db = get_db()
 cursor = db.cursor()
 for i in range(len(time_r)):
     cursor.execute("""
-    UPDATE MotorLogs
+    UPDATE V_measurements
     SET Wm = %s,
     time_m = %s
     WHERE id=%s
@@ -188,15 +183,13 @@ print("Wm range:", np.min(Wm), np.max(Wm))
 #plt.show()
 order = np.argsort(Vr)
 Wm_sorted = Wm[order]
-#Wm_smoothed = savgol_filter(Wm_sorted,window_length=201,polyorder=2) this didnt let the windwo of the figure open
-window_len = min(11, len(Wm_sorted) if len(Wm_sorted) % 2 == 1 else len(Wm_sorted) - 1)
-if window_len < 3:
-    window_len = 3
-Wm_smoothed = savgol_filter(Wm_sorted, window_length=window_len, polyorder=2)
+Wm_smoothed = savgol_filter(Wm_sorted,window_length=201,polyorder=2) #this didnt let the windwo of the figure open
 plt.plot(Vr, Wr, 'o', label='data')
 plt.plot(Vr[order],Wm_smoothed,'--',label='diffev')
 plt.legend()
 plt.show()
+#plt.savefig("fit_plot.png")
+#plt.close()
 # Time step
 dt = 0.1  
 
@@ -222,6 +215,9 @@ plt.legend(loc='upper left')
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
 plt.show()
+#plt.savefig("fit_plot.png")
+#plt.close()
+
 error = Wm - Wr
 
 RMSE = np.sqrt(np.mean(error**2))
