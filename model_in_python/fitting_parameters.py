@@ -29,7 +29,8 @@ ORDER BY time_r
 """)
 
 rows = cursor.fetchall()
-
+# Time step
+dt = 0.1 
 ids    = np.array([row[0] for row in rows])
 time_r = np.array([row[1] for row in rows])
 Vr     = np.array([row[2] for row in rows])
@@ -77,9 +78,9 @@ def resid(params, Vr, Wr):
     b = params['b'].value
     c = params['c'].value
     d = params['d'].value
-    g = params['g'].value
-
-    Wm = a*Wr*Vr +(b/2)*Vr*Wr**2 +(c/2)*Wr*Vr**2 +(d/4)*(Wr**2)*(Vr**2) +g
+    e = params['e'].value
+    f = params['f'].value
+    Wm = Wr + (a + b*Wr + c*Vr + d*Wr*Vr + e*Vr**2 + f*Vr**3)*dt
     penalty = np.zeros_like(Wm)
     # motor cannot exceed rated speed
     penalty[Wm > 1] = (Wm[Wm > 1]-1)*50
@@ -102,7 +103,8 @@ params.add('a', 0, min=-10, max=10)
 params.add('b', 0, min=-10, max=10)
 params.add('c', 0, min=-10, max=10)
 params.add('d', 0, min=-10, max=10)
-params.add('g', 0, min=-1, max=1)
+params.add('e', 0, min=-10, max=10)
+params.add('f', 0, min=-10, max=10)
 ###############################################################################
 # Perform the fits and show fitting results and plot:
 #o1 = lmfit.minimize(resid, params, args=(x, yn), method='leastsq')
@@ -115,24 +117,28 @@ Wn = Wr / 60.0
 print("FIT Vr:", Vn.min(), Vn.max())
 print("FIT Wr:", Wn.min(), Wn.max())
 o2 = lmfit.minimize(resid, params, args=(Vn, Wn), method='leastsq')
-print("\n\n# Fit using differential_evolution:")
+print("\n\n# Fit using least square method:")
 lmfit.report_fit(o2)
 best = o2.params
-Wm = (
-    best["a"].value * Wn * Vn
-    + (best["b"].value / 2) * Vn * Wn**2
-    + (best["c"].value / 2) * Wn * Vn**2
-    + (best["d"].value / 4) * Wn**2 * Vn**2
-    + best["g"].value
-)
-# Reconverting
-Wm=Wm*60
+Wm = np.zeros_like(Vn) #NumPy array filled entirely with zeros 
+# to match the exact same length and data type of Vn
+Wm[0] = Wr[0]  # Start with the first real measured speed
+
+for i in range(1, len(Vn)):
+    Wn_prev = Wm[i-1] / 60.0  # Previous prediction (normalized)
+    Vni = Vn[i]              # Real measured voltage
+    
+    Wm_step = (
+      Wn_prev + (best["a"].value + best["b"].value * Wn_prev + best["c"].valu * Vni + best["d"].value * Wn_prev * Vni + best["e"].value * Vni**2 + best["f"].value * Vni**3)*dt
+    )
+    Wm[i] = Wm_step * 60.0    # Reconvert
 wm_equation_coeffs = {
     "a": best["a"].value,
     "b": best["b"].value,
     "c": best["c"].value,
     "d": best["d"].value,
-    "g": best["g"].value,
+    "e": best["e"].value,
+    "f": best["f"].value,
     "time_m": int(time_r[-1])
 }
 ###############################################################################
@@ -163,7 +169,7 @@ pct_error = np.mean(np.abs((Wm[valid_idx] - Wr[valid_idx]) / Wm[valid_idx])) * 1
 
 print(f"Average Percentage Error: {pct_error:.2f}%")
 print(f"Average Twin Accuracy: {100 - pct_error:.2f}%")
-print("Vr:", Vr[:5], "...", Vr[-1])
+print("Vr:", Vr[:5], "...", Vr[-1])NumPy array filled entirely with zeros, designed to match the exact same length and data type as your Vn
 print("Wr:", Wr[:5], "...", Wr[-1])
 print("Wm:", Wm[:5], "...", Wm[-1])
 # Using filter eliminate noise
@@ -190,9 +196,7 @@ plt.legend()
 plt.show()
 #plt.savefig("fit_plot.png")
 #plt.close()
-# Time step
-dt = 0.1  
-
+ 
 # Reconstruct the time vector based on data length
 num_points = len(Wm)
 time = np.arange(0, num_points * dt, dt)
@@ -205,9 +209,9 @@ plt.figure(figsize=(12, 4))
 #plt.plot(time, Wr, 'r--', label='Model Speed (Wr)', linewidth=1.5)
 step = 20   # only for visualization
 
-plt.plot(time[::step], Wm[::step], color='blue', linestyle='None', marker='.', markersize=3, alpha=0.5, label='Measured Speed (Wm)')
+plt.plot(time[::step], Wm[::step], color='blue', linestyle='None', marker='.', markersize=3, alpha=0.5, label='Measured Speed (Wr)')
 
-plt.plot(time[::step], Wr[::step], color='red', linestyle='-', linewidth=1, label='Model Speed (Wr)')
+plt.plot(time[::step], Wr[::step], color='red', linestyle='-', linewidth=1, label='Model Speed (Wm)')
 plt.xlabel('Time (seconds)', fontsize=12)
 plt.ylabel('Speed (rad/s or RPM)', fontsize=12)
 plt.title('Digital Twin Tracking: Measured vs. Fitted Speed over Time', fontsize=14)
