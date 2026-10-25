@@ -22,8 +22,7 @@ history = deque(maxlen=500)
 
 _coeffs_cache = None
 _coeffs_last_loaded = 0
-COEFF_RELOAD_INTERVAL_S = 60  # re-check the coefficients file at most once a minute,
-                               # not on every single request
+COEFF_RELOAD_INTERVAL_S = 60  # re-check the coefficients file at most once a minute
 
 
 def get_db():
@@ -45,33 +44,39 @@ def load_coeffs():
     return _coeffs_cache
 
 
-def compute_wm(Vr, Wr):
+def compute_wm(Vr, Wr_fallback):
     """
-    Direct algebraic equation (normalized inputs):
+    Recursive discrete-time equation using the PREVIOUS predicted speed (Wm) 
+    instead of current measured speed (Wr):
         Vn = Vr / 12.0
-        Wn = Wr / 60.0
-        Wm_norm = a*Wn*Vn + (b/2)*Vn*Wn^2 + (c/2)*Wn*Vn^2 + (d/4)*Wn^2*Vn^2 + g
+        Wn_prev = Wm_previous / 60.0
+        Wm_norm = Wn_prev + (a + b*Wn_prev + c*Vn + d*Wn_prev*Vn + e*Vn^2 + f*Vn^3) * dt
         Wm = Wm_norm * 60.0
-
-    NOTE: this equation uses Wr (real speed) as an input, not just Vr.
-    Worth being explicit about in the report: this makes Wm partially
-    dependent on the real measurement it's being compared against,
-    which is a different design than a fully independent virtual twin.
     """
     coeffs = load_coeffs()
     if coeffs is None:
         return None
 
+    dt = 0.1
     Vn = Vr / 12.0
-    Wn = Wr / 60.0
 
-    Wm_norm = (
-        coeffs["a"] * Wn * Vn
-        + (coeffs["b"] / 2) * Vn * Wn**2
-        + (coeffs["c"] / 2) * Wn * Vn**2
-        + (coeffs["d"] / 4) * (Wn**2) * (Vn**2)
-        + coeffs["g"]
-    )
+    # Get the previous predicted speed from history, or fallback to Wr for the first point
+    with lock:
+        if len(history) > 0 and history[-1]["Wm"] is not None:
+            last_Wm = history[-1]["Wm"]
+        else:
+            last_Wm = Wr_fallback  # Initial condition (like Wm[0] = Wr[0])
+
+    Wn_prev = last_Wm / 60.0
+
+    Wm_norm = Wn_prev + (
+        coeffs["a"]
+        + coeffs["b"] * Wn_prev
+        + coeffs["c"] * Vn
+        + coeffs["d"] * Wn_prev * Vn
+        + coeffs["e"] * Vn**2
+        + coeffs["f"] * Vn**3
+    ) * dt
 
     return Wm_norm * 60.0
 
@@ -144,7 +149,8 @@ def latest():
         "Wm": Wm,
         "deviation": abs(Wr - Wm) if Wm is not None else None,
     }
-    return jsonify(entry)   
+    return jsonify(entry)    
+
 
 @app.route("/history", methods=["GET"])
 def get_history():
