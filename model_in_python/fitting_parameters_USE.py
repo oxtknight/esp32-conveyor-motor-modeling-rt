@@ -36,7 +36,7 @@ while True:
         current_count = get_row_count()
         new_rows = current_count - last_processed_count
 
-        if new_rows >= 3000:
+        if new_rows >= 20000:
             print(f"\n[Trigger] Detected {new_rows} new rows. Running fitting pipeline...")
 
             db = get_db()
